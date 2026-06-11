@@ -1,28 +1,44 @@
 import requests
+import time
 from statistics import mean
 
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
+HEADERS = {"User-Agent": "onyXBot/1.0"}
+
+def _get(url):
+    for attempt in range(3):
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            return res
+        if res.status_code == 429:
+            time.sleep(2 * (attempt + 1))
+            continue
+        break
+    return None
 
 def fetch_market_analytics(coin_id):
     url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart?vs_currency=usd&days=1"
     try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            prices = res.json()["prices"]
-            current_price = prices[-1][1]
-            past_price = prices[-16][1] if len(prices) > 16 else prices[0][1]
-            price_change_pct = ((current_price - past_price) / past_price) * 100
-            return current_price, price_change_pct
-        return None, None
+        res = _get(url)
+        if res is None:
+            return None, None
+        prices = res.json()["prices"]
+        current_price = prices[-1][1]
+        past_price = prices[-16][1] if len(prices) > 16 else prices[0][1]
+        price_change_pct = ((current_price - past_price) / past_price) * 100
+        return current_price, price_change_pct
     except Exception:
         return None, None
 
 def fetch_instant_price(coin_id):
     url = f"{COINGECKO_BASE}/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true"
     try:
-        res = requests.get(url, timeout=10).json()
-        if coin_id in res:
-            return res[coin_id]["usd"], res[coin_id]["usd_24h_change"]
+        res = _get(url)
+        if res is None:
+            return None, None
+        data = res.json()
+        if coin_id in data:
+            return data[coin_id]["usd"], data[coin_id]["usd_24h_change"]
         return None, None
     except Exception:
         return None, None
@@ -38,32 +54,23 @@ def fetch_eth_gas():
         return "?", "?"
 
 def analyze_market(coin_id):
-    """Returns (direction, confidence, current_price, target_price, summary, signal_emoji)
-    direction: 'bullish', 'bearish', 'neutral'
-    confidence: int 0-100
-    current_price: latest price
-    target_price: predicted target (rise to / drop to)
-    summary: short explanation
-    signal_emoji: 🟢 / 🔴 / ⚪
-    """
     try:
-        url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart?vs_currency=usd&days=7"
-        res = requests.get(url, timeout=10)
-        if res.status_code != 200:
+        url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart?vs_currency=usd&days=1"
+        res = _get(url)
+        if res is None:
             return None, None, None, None, None, None
         prices = [p[1] for p in res.json()["prices"]]
         if len(prices) < 24:
             return None, None, None, None, None, None
 
         current = prices[-1]
-        sma_24 = mean(prices[-24:])
-        sma_7 = mean(prices[-7:])
-        low_24 = min(prices[-24:])
-        high_24 = max(prices[-24:])
+        sma_24 = mean(prices[-24:]) if len(prices) >= 24 else mean(prices)
+        sma_7 = mean(prices[-7:]) if len(prices) >= 7 else mean(prices)
+        low_24 = min(prices[-24:]) if len(prices) >= 24 else min(prices)
+        high_24 = max(prices[-24:]) if len(prices) >= 24 else max(prices)
 
         change_4h = ((prices[-1] - prices[-5]) / prices[-5]) * 100 if len(prices) >= 5 else 0
         change_24h = ((prices[-1] - prices[-25]) / prices[-25]) * 100 if len(prices) >= 25 else 0
-        change_7d = ((prices[-1] - prices[0]) / prices[0]) * 100
 
         bullish = 0
         bearish = 0
@@ -143,10 +150,9 @@ def analyze_market(coin_id):
         return None, None, None, None, None, None
 
 def fetch_trending_coins():
-    """Returns list of trending/hot coin IDs from CoinGecko."""
     try:
-        res = requests.get(f"{COINGECKO_BASE}/search/trending", timeout=10)
-        if res.status_code != 200:
+        res = _get(f"{COINGECKO_BASE}/search/trending")
+        if res is None:
             return []
         coins = res.json().get("coins", [])
         return [c["item"]["id"] for c in coins[:10]]
@@ -154,11 +160,10 @@ def fetch_trending_coins():
         return []
 
 def fetch_volatile_coins():
-    """Returns top gainers & losers by 24h change."""
     try:
         url = f"{COINGECKO_BASE}/coins/markets?vs_currency=usd&order=volume_desc&per_page=50&page=1&sparkline=false"
-        res = requests.get(url, timeout=10)
-        if res.status_code != 200:
+        res = _get(url)
+        if res is None:
             return []
         coins = res.json()
         volatile = []

@@ -1,5 +1,6 @@
 import os
 import time
+import random
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import xml.etree.ElementTree as ET
@@ -151,9 +152,12 @@ async def gas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        r = requests.get("https://news.google.com/rss/search?q=cryptocurrency&hl=en-US&gl=US&ceid=US:en", timeout=10)
+        ts = int(time.time())
+        topics = ["cryptocurrency", "bitcoin OR ethereum OR solana", "altcoin rally", "crypto market crash", "defi", "meme coin"]
+        topic = random.choice(topics)
+        r = requests.get(f"https://news.google.com/rss/search?q={topic}&hl=en-US&gl=US&ceid=US:en&t={ts}", timeout=10)
         root = ET.fromstring(r.content)
-        msg = "📰 *Crypto News Headlines:*\n\n"
+        msg = f"📰 *Crypto News — {topic.title()}*\n\n"
         for item in list(root.findall('.//item'))[:3]:
             title = item.findtext('title', '')
             link = item.findtext('link', '')
