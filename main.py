@@ -417,7 +417,14 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        self._ok()
+    def do_HEAD(self):
+        self._ok()
+    def do_POST(self):
+        self._ok()
+    def _ok(self):
         self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
         self.end_headers()
         self.wfile.write(b"ok")
     def log_message(self, *a):
