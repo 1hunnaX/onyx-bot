@@ -359,7 +359,7 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
             last_alert = info.get("last_alert", 0)
             last_dir = info.get("last_dir", "")
             move_pct = abs((target_price - cur_price) / cur_price) * 100
-            if confidence >= 65 and move_pct >= 15 and (direction != last_dir or now - last_alert > 86400):
+            if confidence >= 65 and move_pct >= 25 and (direction != last_dir or now - last_alert > 86400):
                 user_cap = user_pref.get("balance", 1000.0)
                 safe_buy = user_cap * 0.05
                 risky_buy = user_cap * 0.15
@@ -398,7 +398,7 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
             if result[0] is None or result[1] < 65:
                 continue
             _, _, cur, tgt, _, _ = result
-            if abs((tgt - cur) / cur) * 100 < 15:
+            if abs((tgt - cur) / cur) * 100 < 25:
                 continue
             direction, confidence, cur_price, target_price, summary, emoji = result
             arrow = "↗" if direction == "bullish" else "↘"

@@ -127,15 +127,15 @@ def analyze_market(coin_id):
             return None, None, None, None, None, None
 
         move_pct = abs(change_24h) * 3
-        move_pct = max(move_pct, 10.0)
+        move_pct = max(move_pct, 25.0)
 
-        if bullish > bearish and move_pct >= 10:
+        if bullish > bearish and move_pct >= 25:
             direction = "bullish"
             confidence = int((bullish / total) * 100)
             signal_emoji = "🟢"
             target_price = round(current * (1 + move_pct / 100), 2)
             summary = "; ".join(reasons[:3])
-        elif bearish > bullish and move_pct >= 10:
+        elif bearish > bullish and move_pct >= 25:
             direction = "bearish"
             confidence = int((bearish / total) * 100)
             signal_emoji = "🔴"
