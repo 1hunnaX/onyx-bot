@@ -1,5 +1,7 @@
 import os
 import time
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -409,9 +411,23 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
             predictions[user_id][coin] = {"added": 0, "last_alert": 0, "last_dir": direction, "auto": True}
             db.save_db(predictions, db.PREDICT_DB_FILE)
 
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+    def log_message(self, *a):
+        pass
+
+def run_health_server():
+    server = HTTPServer(("0.0.0.0", 10000), HealthHandler)
+    server.serve_forever()
+
 def main():
     if not TOKEN:
         return
+    t = threading.Thread(target=run_health_server, daemon=True)
+    t.start()
     app = Application.builder().token(TOKEN).build()
     app.job_queue.run_once(lambda ctx: set_bot_commands(app), when=1)
 
