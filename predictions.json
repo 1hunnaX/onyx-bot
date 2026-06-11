@@ -1,0 +1,45 @@
+{
+    "6823859825": {
+        "bitcoin": {
+            "added": 1781106313.050287,
+            "last_alert": 1781106407.3566425,
+            "last_dir": "bullish"
+        },
+        "hyperliquid": {
+            "added": 1781106295.2408764,
+            "last_alert": 1781106408.0113513,
+            "last_dir": "bullish"
+        },
+        "audiera": {
+            "added": 1781106321.277408,
+            "last_alert": 1781106408.6060908,
+            "last_dir": "bullish"
+        },
+        "morpho": {
+            "added": 1781106328.7383566,
+            "last_alert": 1781106409.0652487,
+            "last_dir": "bullish"
+        },
+        "humanity": {
+            "added": 0,
+            "last_alert": 0,
+            "last_dir": "bullish",
+            "auto": true
+        },
+        "pudgy-penguins": {
+            "added": 0,
+            "last_alert": 1781107217.9230812,
+            "last_dir": "bullish"
+        },
+        "zcash": {
+            "added": 0,
+            "last_alert": 1781106469.4749155,
+            "last_dir": "bullish"
+        },
+        "solana": {
+            "added": 0,
+            "last_alert": 1781106470.1364481,
+            "last_dir": "bullish"
+        }
+    }
+}
