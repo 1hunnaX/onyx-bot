@@ -424,7 +424,8 @@ class HealthHandler(BaseHTTPRequestHandler):
         pass
 
 def run_health_server():
-    server = HTTPServer(("0.0.0.0", 10000), HealthHandler)
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
 def main():
