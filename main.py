@@ -2,6 +2,7 @@ import os
 import time
 import random
 import threading
+import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import xml.etree.ElementTree as ET
 from dotenv import load_dotenv
@@ -118,7 +119,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         coin = context.args[0].lower()
-        price, change = ana.fetch_instant_price(coin)
+        price, change = await asyncio.to_thread(ana.fetch_instant_price, coin)
         if price is not None:
             emoji = "📈" if change >= 0 else "📉"
             await update.message.reply_text(f"💰 *{coin.upper()}*\nPrice: `${price:,.2f}`\n{emoji} 24h Change: `{change:.2f}%`", parse_mode="Markdown")
@@ -131,7 +132,7 @@ async def trend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         coin = context.args[0].lower()
         await update.message.reply_text(f"⏳ Checking *{coin.upper()}* trend...")
-        price, trend = ana.fetch_market_analytics(coin)
+        price, trend = await asyncio.to_thread(ana.fetch_market_analytics, coin)
         if price is not None:
             status = "🔥 *PUMPING*" if trend > 2.0 else ("❄️ *DUMPING*" if trend < -2.0 else "⚖️ *SIDEWAYS*")
             await update.message.reply_text(f"📊 *{coin.upper()}*\nPrice: `${price:,.2f}`\n4h Change: `{trend:.2f}%`\nSignal: {status}", parse_mode="Markdown")
@@ -141,7 +142,7 @@ async def trend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Use: `/trend [coin]` — e.g. `/trend bitcoin`")
 
 async def gas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    standard, fast = ana.fetch_eth_gas()
+    standard, fast = await asyncio.to_thread(ana.fetch_eth_gas)
     await update.message.reply_text(
         f"⛽ *Network Fees*\n\n"
         f"🔹 *Ethereum:* `{standard} Gwei` (standard) / `{fast} Gwei` (fast)\n"
@@ -155,7 +156,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ts = int(time.time())
         topics = ["cryptocurrency", "bitcoin OR ethereum OR solana", "altcoin rally", "crypto market crash", "defi", "meme coin"]
         topic = random.choice(topics)
-        r = requests.get(f"https://news.google.com/rss/search?q={topic}&hl=en-US&gl=US&ceid=US:en&t={ts}", timeout=10)
+        r = await asyncio.to_thread(requests.get, f"https://news.google.com/rss/search?q={topic}&hl=en-US&gl=US&ceid=US:en&t={ts}", timeout=10)
         root = ET.fromstring(r.content)
         msg = f"📰 *Crypto News — {topic.title()}*\n\n"
         for item in list(root.findall('.//item'))[:3]:
@@ -290,16 +291,16 @@ async def predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🔍 Scanning for hot volatile coins...")
-    coins = ana.fetch_trending_coins()
+    coins = await asyncio.to_thread(ana.fetch_trending_coins)
     if not coins:
-        coins = ana.fetch_volatile_coins()
+        coins = await asyncio.to_thread(ana.fetch_volatile_coins)
     if not coins:
         await update.message.reply_text("⚠️ Couldn't scan right now. Try again later.")
         return
     msg = "🔥 *Hot Coins Found:*\n\n"
     found = 0
     for coin in coins[:8]:
-        result = ana.analyze_market(coin)
+        result = await asyncio.to_thread(ana.analyze_market, coin)
         if result[0] is not None and result[1] >= 65:
             direction, confidence, cur, target, summary, emoji = result
             found += 1
@@ -323,7 +324,7 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
         if user_pref["alerts"] == "OFF":
             continue
         for coin, target in list(coins.items()):
-            price, trend = ana.fetch_market_analytics(coin)
+            price, trend = await asyncio.to_thread(ana.fetch_market_analytics, coin)
             if price is not None and trend is not None:
                 if price <= target:
                     user_cap = user_pref.get("balance", 1000.0)
@@ -351,7 +352,7 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
         if user_pref["alerts"] == "OFF":
             continue
         for coin, info in list(coins.items()):
-            result = ana.analyze_market(coin)
+            result = await asyncio.to_thread(ana.analyze_market, coin)
             if result[0] is None:
                 continue
             direction, confidence, cur_price, target_price, summary, emoji = result
@@ -378,12 +379,11 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
                 db.save_db(predictions, db.PREDICT_DB_FILE)
 
 async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
-    """Scans trending/volatile coins and sends predictions to all users."""
     settings_db = db.load_db(db.SETTINGS_DB_FILE)
     predictions = db.load_db(db.PREDICT_DB_FILE)
-    trending = ana.fetch_trending_coins()
+    trending = await asyncio.to_thread(ana.fetch_trending_coins)
     if not trending:
-        trending = ana.fetch_volatile_coins()
+        trending = await asyncio.to_thread(ana.fetch_volatile_coins)
     if not trending:
         return
     for user_id in list(settings_db.keys()):
@@ -394,7 +394,7 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
         for coin in trending:
             if coin in alerted:
                 continue
-            result = ana.analyze_market(coin)
+            result = await asyncio.to_thread(ana.analyze_market, coin)
             if result[0] is None or result[1] < 65:
                 continue
             _, _, cur, tgt, _, _ = result

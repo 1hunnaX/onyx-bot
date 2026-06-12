@@ -4,6 +4,17 @@ from statistics import mean
 
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 HEADERS = {"User-Agent": "onyXBot/1.0"}
+_cache = {}
+_CACHE_TTL = 30
+
+def _cached_get(url, ttl=_CACHE_TTL):
+    now = time.time()
+    if url in _cache and now - _cache[url]["ts"] < ttl:
+        return _cache[url]["data"]
+    res = _get(url)
+    if res is not None:
+        _cache[url] = {"data": res, "ts": now}
+    return res
 
 def _get(url):
     for attempt in range(3):
@@ -19,7 +30,7 @@ def _get(url):
 def fetch_market_analytics(coin_id):
     url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart?vs_currency=usd&days=1"
     try:
-        res = _get(url)
+        res = _cached_get(url)
         if res is None:
             return None, None
         prices = res.json()["prices"]
@@ -33,7 +44,7 @@ def fetch_market_analytics(coin_id):
 def fetch_instant_price(coin_id):
     url = f"{COINGECKO_BASE}/simple/price?ids={coin_id}&vs_currencies=usd&include_24hr_change=true"
     try:
-        res = _get(url)
+        res = _cached_get(url)
         if res is None:
             return None, None
         data = res.json()
@@ -44,11 +55,17 @@ def fetch_instant_price(coin_id):
         return None, None
 
 def fetch_eth_gas():
+    url = "https://api.etherscan.io/v2/api?chainid=1&module=gastracker&action=gasoracle"
     try:
-        res = requests.get("https://api.etherscan.io/v2/api?chainid=1&module=gastracker&action=gasoracle", timeout=10).json()
+        now = time.time()
+        if url in _cache and now - _cache[url]["ts"] < 30:
+            return _cache[url]["data"]
+        res = requests.get(url, timeout=10).json()
         if res.get("status") == "1":
             result = res["result"]
-            return result.get("ProposeGasPrice", "?"), result.get("FastGasPrice", "?")
+            data = (result.get("ProposeGasPrice", "?"), result.get("FastGasPrice", "?"))
+            _cache[url] = {"data": data, "ts": now}
+            return data
         return "?", "?"
     except Exception:
         return "?", "?"
@@ -56,7 +73,7 @@ def fetch_eth_gas():
 def analyze_market(coin_id):
     try:
         url = f"{COINGECKO_BASE}/coins/{coin_id}/market_chart?vs_currency=usd&days=1"
-        res = _get(url)
+        res = _cached_get(url)
         if res is None:
             return None, None, None, None, None, None
         prices = [p[1] for p in res.json()["prices"]]
@@ -151,7 +168,7 @@ def analyze_market(coin_id):
 
 def fetch_trending_coins():
     try:
-        res = _get(f"{COINGECKO_BASE}/search/trending")
+        res = _cached_get(f"{COINGECKO_BASE}/search/trending", ttl=120)
         if res is None:
             return []
         coins = res.json().get("coins", [])
@@ -162,7 +179,7 @@ def fetch_trending_coins():
 def fetch_volatile_coins():
     try:
         url = f"{COINGECKO_BASE}/coins/markets?vs_currency=usd&order=volume_desc&per_page=50&page=1&sparkline=false"
-        res = _get(url)
+        res = _cached_get(url, ttl=60)
         if res is None:
             return []
         coins = res.json()
