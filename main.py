@@ -19,11 +19,46 @@ MIN_COIN_PRICE = 1.0
 
 DEFAULT_SETTINGS = {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0}
 
+COIN_ALIASES = {
+    "btc": "bitcoin", "eth": "ethereum", "sol": "solana", "xrp": "ripple",
+    "ada": "cardano", "dot": "polkadot", "doge": "dogecoin", "matic": "polygon",
+    "link": "chainlink", "avax": "avalanche-2", "atom": "cosmos", "algo": "algorand",
+    "ltc": "litecoin", "bch": "bitcoin-cash", "xlm": "stellar", "trx": "tron",
+    "apt": "aptos", "sui": "sui", "near": "near", "op": "optimism",
+    "arb": "arbitrum", "shib": "shiba-inu", "pepe": "pepe", "wif": "dogwifcoin",
+    "bonk": "bonk", "floki": "floki-inu",
+}
+
+LOADING_MSGS = [
+    "⏳ Checking the charts...",
+    "📡 Fetching data from CoinGecko...",
+    "🔮 Consulting the crypto gods...",
+    "🧐 Analyzing market trends...",
+    "⚡ Scanning the blockchain...",
+    "📊 Crunching the numbers...",
+    "🔍 Looking up the latest data...",
+]
+
+def resolve_coin(name):
+    name = name.lower().strip()
+    return COIN_ALIASES.get(name, name)
+
+def coin_buttons(coin):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 Price", callback_data=f"p:{coin}"),
+         InlineKeyboardButton("📈 Trend", callback_data=f"t:{coin}")],
+        [InlineKeyboardButton("🔮 Predict", callback_data=f"a:{coin}"),
+         InlineKeyboardButton("🔕 Untrack", callback_data=f"r:{coin}")],
+    ])
+
 def get_user_settings(settings_db, user_id):
     raw = settings_db.get(user_id, {})
     merged = dict(DEFAULT_SETTINGS)
     merged.update(raw)
     return merged
+
+def random_loading():
+    return random.choice(LOADING_MSGS)
 
 async def set_bot_commands(application: Application):
     commands = [
@@ -59,7 +94,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{divider}\n"
             f"Your crypto wingman. I track prices, predict pumps & dumps, and alert you when it's time to buy.\n\n"
             f"👉 Type `/help` to see all commands\n"
-            f"👉 Or just drop a coin name!"
+            f"👉 Or just drop a coin name — try *bitcoin*!"
         )
         users_interacted[user_id] = {"joined": time.time(), "greeted": True}
         db.save_db(users_interacted, db.USER_DB_FILE)
@@ -67,10 +102,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id not in user_settings:
             user_settings[user_id] = dict(DEFAULT_SETTINGS)
             db.save_db(user_settings, db.SETTINGS_DB_FILE)
+        keyboard = [
+            [InlineKeyboardButton("💰 Check a Coin", callback_data="q_help_price"),
+             InlineKeyboardButton("🔥 Hot Coins", callback_data="q_discover")],
+            [InlineKeyboardButton("📖 Commands", callback_data="q_help")]
+        ]
+        await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     else:
         welcome_text = f"👋 *Welcome back, {first_name}!* Drop a coin name or type `/help`."
-
-    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+        await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     d = "━" * 25
@@ -108,7 +148,7 @@ async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     watchlist = db.load_db(db.WATCH_DB_FILE)
     divider = "━" * 25
     try:
-        coin = context.args[0].lower()
+        coin = resolve_coin(context.args[0])
         target_price = float(context.args[1])
 
         if user_id not in watchlist:
@@ -121,6 +161,7 @@ async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🪙 Coin:  *{coin.upper()}*\n"
             f"🎯 Alert: *${target_price:,}*\n{divider}\n"
             f"I'll ping you when it drops to this level.",
+            reply_markup=coin_buttons(coin),
             parse_mode="Markdown"
         )
     except (IndexError, ValueError):
@@ -146,12 +187,12 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     summary = f"📋 *Your Alerts ({len(user_tracks)})*\n{divider}\n"
     for coin, target in user_tracks.items():
         summary += f"🔸 *{coin.upper()}*  →  *${target:,}*\n"
-    summary += f"{divider}\n💡 `/clear` to remove all"
-    await update.message.reply_text(summary, parse_mode="Markdown")
+    summary += f"{divider}"
+    await update.message.reply_text(summary, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧹 Clear All", callback_data="q_clear_alerts")]]), parse_mode="Markdown")
 
 async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        coin = context.args[0].lower()
+        coin = resolve_coin(context.args[0])
         price, change = await asyncio.to_thread(ana.fetch_instant_price, coin)
         divider = "━" * 25
         if price is not None:
@@ -161,6 +202,7 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 *{coin.upper()}*\n{divider}\n"
                 f"💵 Price:  *${price:,.2f}*\n"
                 f"{arrow} 24h:    *{sign}{change:.2f}%*",
+                reply_markup=coin_buttons(coin),
                 parse_mode="Markdown"
             )
         else:
@@ -170,8 +212,8 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def trend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        coin = context.args[0].lower()
-        await update.message.reply_text(f"⏳ Checking *{coin.upper()}*...")
+        coin = resolve_coin(context.args[0])
+        await update.message.reply_text(random_loading())
         price, trend = await asyncio.to_thread(ana.fetch_market_analytics, coin)
         divider = "━" * 25
         if price is not None:
@@ -187,6 +229,7 @@ async def trend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💵 Price:   *${price:,.2f}*\n"
                 f"📊 4h Chg:  *{sign}{trend:.2f}%*\n{divider}\n"
                 f"{status}",
+                reply_markup=coin_buttons(coin),
                 parse_mode="Markdown"
             )
         else:
@@ -342,7 +385,7 @@ async def clear_predictions_command(update: Update, context: ContextTypes.DEFAUL
 
 async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        coin = context.args[0].lower()
+        coin = resolve_coin(context.args[0])
         user_id = str(update.effective_user.id)
         predictions = db.load_db(db.PREDICT_DB_FILE)
         divider = "━" * 25
@@ -354,6 +397,8 @@ async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📊 *Prediction Added*\n{divider}\n"
             f"🪙 Tracking: *{coin.upper()}*\n{divider}\n"
             f"I'll alert you on high-confidence signals.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👁️ Watchlist", callback_data="q_predictions"),
+                                                 InlineKeyboardButton("🔕 Untrack", callback_data=f"r:{coin}")]]),
             parse_mode="Markdown"
         )
     except IndexError:
@@ -361,7 +406,7 @@ async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unpredict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        coin = context.args[0].lower()
+        coin = resolve_coin(context.args[0])
         user_id = str(update.effective_user.id)
         predictions = db.load_db(db.PREDICT_DB_FILE)
         divider = "━" * 25
@@ -373,6 +418,7 @@ async def unpredict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"🔕 *Prediction Removed*\n{divider}\n"
                 f"*{coin.upper()}* removed. No more signals for this coin.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👁️ Watchlist", callback_data="q_predictions")]]),
                 parse_mode="Markdown"
             )
         else:
@@ -395,11 +441,11 @@ async def predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     for coin, info in user_coins.items():
         tag = " 🤖" if isinstance(info, dict) and info.get("auto") else ""
         msg += f"🔸 *{coin.upper()}*{tag}\n"
-    msg += f"{divider}\n🤖 = auto-discovered\n💡 `/clear_predictions` to wipe all"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    msg += f"{divider}\n🤖 = auto-discovered"
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧹 Clear All", callback_data="q_clear_preds")]]), parse_mode="Markdown")
 
 async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⏳ Scanning the market for hot coins...")
+    await update.message.reply_text(random_loading())
     coins = await asyncio.to_thread(ana.fetch_trending_coins)
     if not coins:
         coins = await asyncio.to_thread(ana.fetch_volatile_coins)
@@ -424,6 +470,19 @@ async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def conversational_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().lower()
+    coin = resolve_coin(text)
+    price, change = await asyncio.to_thread(ana.fetch_instant_price, coin)
+    if price is not None:
+        arrow = "📈" if change >= 0 else "📉"
+        sign = "+" if change >= 0 else ""
+        divider = "━" * 25
+        await update.message.reply_text(
+            f"💰 *{coin.upper()}*\n{divider}\n💵 Price: *${price:,.2f}*\n{arrow} 24h: *{sign}{change:.2f}%*",
+            reply_markup=coin_buttons(coin),
+            parse_mode="Markdown"
+        )
+        return
     divider = "━" * 25
     await update.message.reply_text(
         f"🤖 *Hey!*\n{divider}\n"
@@ -550,6 +609,88 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
             predictions[user_id][coin] = {"added": 0, "last_alert": 0, "last_dir": direction, "auto": True}
             db.save_db(predictions, db.PREDICT_DB_FILE)
 
+async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    user_id = str(query.from_user.id)
+
+    if data == "q_help":
+        await help_command(update, context)
+        return
+    if data == "q_help_price":
+        await query.edit_message_text("💡 Just type `/price bitcoin` or any coin name!")
+        return
+    if data == "q_discover":
+        await discover_command(update, context)
+        return
+    if data == "q_predictions":
+        await predictions_command(update, context)
+        return
+    if data == "q_clear_preds":
+        predictions = db.load_db(db.PREDICT_DB_FILE)
+        if user_id in predictions:
+            del predictions[user_id]
+            db.save_db(predictions, db.PREDICT_DB_FILE)
+        await query.edit_message_text("🧹 All predictions cleared.")
+        return
+    if data == "q_clear_alerts":
+        watchlist = db.load_db(db.WATCH_DB_FILE)
+        if user_id in watchlist:
+            del watchlist[user_id]
+            db.save_db(watchlist, db.WATCH_DB_FILE)
+        await query.edit_message_text("🧹 All alerts cleared.")
+        return
+
+    action, coin = data.split(":", 1)
+    if action == "p":
+        price, change = await asyncio.to_thread(ana.fetch_instant_price, coin)
+        if price is None:
+            await query.edit_message_text(f"❌ Couldn't find *{coin}*.", parse_mode="Markdown")
+            return
+        arrow = "📈" if change >= 0 else "📉"
+        sign = "+" if change >= 0 else ""
+        divider = "━" * 25
+        await query.edit_message_text(
+            f"💰 *{coin.upper()}*\n{divider}\n💵 Price: *${price:,.2f}*\n{arrow} 24h: *{sign}{change:.2f}%*",
+            reply_markup=coin_buttons(coin),
+            parse_mode="Markdown"
+        )
+    elif action == "t":
+        await query.edit_message_text(random_loading())
+        price, trend = await asyncio.to_thread(ana.fetch_market_analytics, coin)
+        if price is None:
+            await query.edit_message_text(f"❌ Couldn't find *{coin}*.", parse_mode="Markdown")
+            return
+        sign = "+" if trend >= 0 else ""
+        status = "🔥 *PUMPING*" if trend > 2.0 else ("❄️ *DUMPING*" if trend < -2.0 else "⚖️ *SIDEWAYS*")
+        divider = "━" * 25
+        await query.edit_message_text(
+            f"📊 *{coin.upper()} — 4h Trend*\n{divider}\n💵 Price: *${price:,.2f}*\n📊 4h Chg: *{sign}{trend:.2f}%*\n{divider}\n{status}",
+            reply_markup=coin_buttons(coin),
+            parse_mode="Markdown"
+        )
+    elif action == "a":
+        predictions = db.load_db(db.PREDICT_DB_FILE)
+        if user_id not in predictions:
+            predictions[user_id] = {}
+        predictions[user_id][coin] = {"added": time.time(), "last_alert": None}
+        db.save_db(predictions, db.PREDICT_DB_FILE)
+        await query.edit_message_text(
+            f"📊 *{coin.upper()}* added to predictions. I'll alert you on high-confidence signals.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("👁️ Watchlist", callback_data="q_predictions"),
+                                                 InlineKeyboardButton("🔕 Untrack", callback_data=f"r:{coin}")]]),
+            parse_mode="Markdown"
+        )
+    elif action == "r":
+        predictions = db.load_db(db.PREDICT_DB_FILE)
+        if user_id in predictions and coin in predictions[user_id]:
+            del predictions[user_id][coin]
+            if not predictions[user_id]:
+                del predictions[user_id]
+            db.save_db(predictions, db.PREDICT_DB_FILE)
+        await query.edit_message_text(f"🔕 *{coin.upper()}* removed from predictions.", parse_mode="Markdown")
+
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self._ok()
@@ -596,7 +737,8 @@ def main():
     app.add_handler(CommandHandler("predictions", predictions_command))
     app.add_handler(CommandHandler("discover", discover_command))
 
-    app.add_handler(CallbackQueryHandler(settings_button_callback))
+    app.add_handler(CallbackQueryHandler(settings_button_callback, pattern="^(toggle_|close_)"))
+    app.add_handler(CallbackQueryHandler(quick_action_callback, pattern="^[a-z]+:|^q_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, conversational_handler))
 
     app.job_queue.scheduler.configure(timezone="UTC")
