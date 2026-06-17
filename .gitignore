@@ -1,3 +1,5 @@
 .env
 *.json
 test_analytics.py
+__pycache__/
+*.pyc

@@ -15,6 +15,7 @@ import analytics as ana
 
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
+MIN_COIN_PRICE = 1.0
 
 async def set_bot_commands(application: Application):
     commands = [
@@ -33,7 +34,8 @@ async def set_bot_commands(application: Application):
         BotCommand("predict", "Detect major pumps & dumps"),
         BotCommand("unpredict", "Stop watching a coin"),
         BotCommand("predictions", "View your prediction list"),
-        BotCommand("discover", "Find hot volatile coins to track")
+        BotCommand("discover", "Find hot volatile coins to track"),
+        BotCommand("clear_predictions", "Remove all predictions from your watchlist")
     ]
     await application.bot.set_my_commands(commands)
 
@@ -78,8 +80,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔮 *Predictions*\n"
         "🔹 `/predict [coin]` — Detects major pumps & dumps\n"
         "🔹 `/unpredict [coin]` — Stop prediction watch\n"
-        "🔹 `/predictions` — View prediction watchlist\n"
-        "🔹 `/discover` — Find hot volatile coins\n"
+         "🔹 `/predictions` — View prediction watchlist\n"
+         "🔹 `/clear_predictions` — Clear all predictions\n"
+         "🔹 `/discover` — Find hot volatile coins\n"
         "━━━━━━━━━━━━━━━━━━━\n\n"
         "💳 *Account*\n"
         "🔹 `/setbalance [amount]` — Set trading budget\n"
@@ -249,6 +252,14 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.save_db(watchlist, db.WATCH_DB_FILE)
     await update.message.reply_text("🧹 All alerts cleared.")
 
+async def clear_predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    predictions = db.load_db(db.PREDICT_DB_FILE)
+    if user_id in predictions:
+        del predictions[user_id]
+        db.save_db(predictions, db.PREDICT_DB_FILE)
+    await update.message.reply_text("🧹 All predictions cleared.")
+
 async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         coin = context.args[0].lower()
@@ -285,8 +296,10 @@ async def predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("📭 No coins being watched for predictions. Use `/predict [coin]` to add one.")
         return
     msg = "🔮 *Prediction Watchlist:*\n\n"
-    for coin in user_coins:
-        msg += f"🔸 *{coin.upper()}*\n"
+    for coin, info in user_coins.items():
+        tag = " 🤖 auto" if isinstance(info, dict) and info.get("auto") else ""
+        msg += f"🔸 *{coin.upper()}*{tag}\n"
+    msg += "\n🤖 = auto-discovered by Hot Discovery"
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -302,7 +315,9 @@ async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for coin in coins[:8]:
         result = await asyncio.to_thread(ana.analyze_market, coin)
         if result[0] is not None and result[1] >= 65:
-            direction, confidence, cur, target, summary, emoji = result
+            direction, confidence, cur, target, _, emoji = result
+            if cur < MIN_COIN_PRICE:
+                continue
             found += 1
             arrow = "↗" if direction == "bullish" else "↘"
             msg += f"{emoji} *{coin.upper()}* {arrow} Target: *${target:,.2f}*  (conf: {confidence}%)\n"
@@ -331,19 +346,20 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
                     if trend <= -4.0:
                         low_stake = user_cap * 0.02
                         high_stake = user_cap * 0.06
-                        risk_flag = "⚠️ AGGRESSIVE RISK POSITIONING" if user_pref["risk_mode"] == "Risky" else "🛡️ CONSERVATIVE POSITIONING"
+                        low_qty = low_stake / price
+                        high_qty = high_stake / price
+                        risk_flag = "⚠️ AGGRESSIVE" if user_pref["risk_mode"] == "Risky" else "🛡️ CONSERVATIVE"
                         prediction_msg = (
-                            f"🚨 *BIG DROP DETECTED* 🚨\n"
-                            f"{risk_flag}\n\n"
-                            f"*{coin.upper()}* hit your alert at *${price:,.2f}*.\n"
-                            f"📉 Dropped *{trend:.2f}%* — might be a good buy.\n\n"
-                            f"💡 *Suggested buy (from ${user_cap:,} balance):*\n"
-                            f"🟢 Safe buy: *${low_stake:,.2f}*\n"
-                            f"🔴 Risky buy: *${high_stake:,.2f}*"
+                            f"🚨 *{coin.upper()} HIT YOUR ALERT* 🚨\n"
+                            f"{risk_flag} POSITIONING\n\n"
+                            f"Price dropped *{trend:.2f}%* to *${price:,.2f}*\n\n"
+                            f"💡 *Stake (from ${user_cap:,}):*\n"
+                            f"🟢 Safe: *${low_stake:,.2f}* (~{low_qty:.1f} {coin.upper()})\n"
+                            f"🔴 Aggressive: *${high_stake:,.2f}* (~{high_qty:.1f} {coin.upper()})"
                         )
                         await context.bot.send_message(chat_id=user_id, text=prediction_msg, parse_mode="Markdown")
                     else:
-                        await context.bot.send_message(chat_id=user_id, text=f"🔔 *{coin.upper()}* hit your target of *${target:,}!*\nCurrent price: *${price:,.2f}*", parse_mode="Markdown")
+                        await context.bot.send_message(chat_id=user_id, text=f"🔔 *{coin.upper()}* hit your alert at *${target:,}!*\nCurrent price: *${price:,.2f}*", parse_mode="Markdown")
                     del watchlist[user_id][coin]
                     db.save_db(watchlist, db.WATCH_DB_FILE)
 
@@ -358,21 +374,29 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
             direction, confidence, cur_price, target_price, summary, emoji = result
             now = time.time()
             last_alert = info.get("last_alert", 0)
-            last_dir = info.get("last_dir", "")
             move_pct = abs((target_price - cur_price) / cur_price) * 100
-            if confidence >= 65 and move_pct >= 25 and (direction != last_dir or now - last_alert > 86400):
+            if cur_price < MIN_COIN_PRICE or target_price < MIN_COIN_PRICE:
+                continue
+            if confidence >= 65 and move_pct >= 25 and now - last_alert > 3600:
                 user_cap = user_pref.get("balance", 1000.0)
                 safe_buy = user_cap * 0.05
                 risky_buy = user_cap * 0.15
+                safe_qty = safe_buy / cur_price
+                risky_qty = risky_buy / cur_price
                 arrow = "↗" if direction == "bullish" else "↘"
+                divider = "━" * 25
                 msg = (
-                    f"📊 *PREDICTION: {coin.upper()}*\n\n"
+                    f"📊 *PREDICTION: {coin.upper()}*\n"
+                    f"{divider}\n"
                     f"Signal: *{direction.upper()}* {emoji}  Confidence: *{confidence}%*\n"
-                    f"Current: *${cur_price:,.2f}*  {arrow}  Target: *${target_price:,.2f}*\n\n"
-                    f"📊 {summary}\n\n"
-                    f"💡 *From your ${user_cap:,} staking balance:*\n"
-                    f"🟢 Low stake: *${safe_buy:,.2f}*\n"
-                    f"🔴 High stake: *${risky_buy:,.2f}*"
+                    f"{divider}\n"
+                    f"Current: *${cur_price:,.2f}*\n"
+                    f"Target:  *${target_price:,.2f}* {arrow}\n"
+                    f"{divider}\n"
+                    f"{summary}\n\n"
+                    f"💡 *Stake (from ${user_cap:,}):*\n"
+                    f"🟢 Safe: *${safe_buy:,.2f}* (~{safe_qty:.1f} {coin.upper()})\n"
+                    f"🔴 Aggressive: *${risky_buy:,.2f}* (~{risky_qty:.1f} {coin.upper()})"
                 )
                 await context.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
                 predictions[user_id][coin] = {"added": info.get("added", now), "last_alert": now, "last_dir": direction}
@@ -400,14 +424,21 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
             _, _, cur, tgt, _, _ = result
             if abs((tgt - cur) / cur) * 100 < 25:
                 continue
+            if cur < MIN_COIN_PRICE or tgt < MIN_COIN_PRICE:
+                continue
             direction, confidence, cur_price, target_price, summary, emoji = result
             arrow = "↗" if direction == "bullish" else "↘"
+            divider = "━" * 25
             msg = (
-                f"🔥 *HOT COIN DISCOVERED: {coin.upper()}*\n\n"
+                f"🔥 *HOT COIN: {coin.upper()}*\n"
+                f"{divider}\n"
                 f"Signal: *{direction.upper()}* {emoji}  Confidence: *{confidence}%*\n"
-                f"Current: *${cur_price:,.2f}*  {arrow}  Target: *${target_price:,.2f}*\n\n"
-                f"📊 {summary}\n\n"
-                f"📌 Use `/predict {coin}` to keep tracking this coin."
+                f"{divider}\n"
+                f"Current: *${cur_price:,.2f}*\n"
+                f"Target:  *${target_price:,.2f}* {arrow}\n"
+                f"{divider}\n"
+                f"{summary}\n\n"
+                f"📌 Use `/predict {coin}` to track this coin."
             )
             await context.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
             if user_id not in predictions:
@@ -455,6 +486,7 @@ def main():
     app.add_handler(CommandHandler("setbalance", setbalance_command))
     app.add_handler(CommandHandler("settings", settings_command))
     app.add_handler(CommandHandler("clear", clear_command))
+    app.add_handler(CommandHandler("clear_predictions", clear_predictions_command))
     app.add_handler(CommandHandler("predict", predict_command))
     app.add_handler(CommandHandler("unpredict", unpredict_command))
     app.add_handler(CommandHandler("predictions", predictions_command))
