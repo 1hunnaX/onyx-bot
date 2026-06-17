@@ -17,6 +17,14 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MIN_COIN_PRICE = 1.0
 
+DEFAULT_SETTINGS = {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0}
+
+def get_user_settings(settings_db, user_id):
+    raw = settings_db.get(user_id, {})
+    merged = dict(DEFAULT_SETTINGS)
+    merged.update(raw)
+    return merged
+
 async def set_bot_commands(application: Application):
     commands = [
         BotCommand("start", "Start the bot"),
@@ -57,7 +65,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.save_db(users_interacted, db.USER_DB_FILE)
         user_settings = db.load_db(db.SETTINGS_DB_FILE)
         if user_id not in user_settings:
-            user_settings[user_id] = {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0}
+            user_settings[user_id] = dict(DEFAULT_SETTINGS)
             db.save_db(user_settings, db.SETTINGS_DB_FILE)
     else:
         welcome_text = f"👋 *Welcome back, {first_name}!* Drop a coin name or type `/help`."
@@ -224,7 +232,9 @@ async def setbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         amount = float(context.args[0])
         if user_id not in user_settings:
-            user_settings[user_id] = {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0}
+            user_settings[user_id] = dict(DEFAULT_SETTINGS)
+        else:
+            user_settings[user_id] = get_user_settings(user_settings, user_id)
         user_settings[user_id]["balance"] = amount
         db.save_db(user_settings, db.SETTINGS_DB_FILE)
         await update.message.reply_text(
@@ -242,16 +252,16 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     watchlist = db.load_db(db.WATCH_DB_FILE)
     predictions = db.load_db(db.PREDICT_DB_FILE)
 
-    settings = user_settings.get(user_id, {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0})
+    settings = get_user_settings(user_settings, user_id)
     user_tracks = watchlist.get(user_id, {})
     user_preds = predictions.get(user_id, {})
     divider = "━" * 25
 
     msg = (
         f"💳 *Your Portfolio*\n{divider}\n"
-        f"💰 Wallet:    *${settings.get('balance', 1000.0):,}*\n"
-        f"🛡️ Risk Mode: *{settings.get('risk_mode', 'Safe')}*\n"
-        f"🔥 Discovery: *{settings.get('hot_discovery', 'ON')}*\n{divider}\n"
+        f"💰 Wallet:    *${settings['balance']:,}*\n"
+        f"🛡️ Risk Mode: *{settings['risk_mode']}*\n"
+        f"🔥 Discovery: *{settings['hot_discovery']}*\n{divider}\n"
         f"📊 Alerts:     *{len(user_tracks)} active*\n"
         f"🔮 Predictions: *{len(user_preds)} watching*\n{divider}\n"
         f"💡 `/setbalance [amount]` to adjust your wallet"
@@ -261,15 +271,15 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     user_settings = db.load_db(db.SETTINGS_DB_FILE)
-    current = user_settings.get(user_id, {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0})
+    current = get_user_settings(user_settings, user_id)
     divider = "━" * 25
 
     text = (
         f"⚙️ *Settings*\n{divider}\n"
         f"🛡️ Risk Mode:     *{current['risk_mode']}*\n"
         f"🔔 Alerts:        *{current['alerts']}*\n"
-        f"🔥 Hot Discovery: *{current.get('hot_discovery', 'ON')}*\n"
-        f"💰 Balance:       *${current.get('balance', 1000.0):,}*"
+        f"🔥 Hot Discovery: *{current['hot_discovery']}*\n"
+        f"💰 Balance:       *${current['balance']:,}*"
     )
     keyboard = [
         [InlineKeyboardButton("Toggle Risk Mode", callback_data="toggle_risk"), InlineKeyboardButton("Mute Alerts", callback_data="toggle_alerts")],
@@ -284,14 +294,14 @@ async def settings_button_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
     divider = "━" * 25
 
-    current = user_settings.get(user_id, {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0})
+    current = get_user_settings(user_settings, user_id)
 
     if query.data == "toggle_risk":
         current["risk_mode"] = "Risky" if current["risk_mode"] == "Safe" else "Safe"
     elif query.data == "toggle_alerts":
         current["alerts"] = "OFF" if current["alerts"] == "ON" else "ON"
     elif query.data == "toggle_hot":
-        current["hot_discovery"] = "OFF" if current.get("hot_discovery", "ON") == "ON" else "ON"
+        current["hot_discovery"] = "OFF" if current["hot_discovery"] == "ON" else "ON"
     elif query.data == "close_settings":
         await query.edit_message_text(f"🔒 *Settings Saved*\n{divider}\nYour preferences have been updated.", parse_mode="Markdown")
         return
@@ -303,7 +313,7 @@ async def settings_button_callback(update: Update, context: ContextTypes.DEFAULT
         f"⚙️ *Settings*\n{divider}\n"
         f"🛡️ Risk Mode:     *{current['risk_mode']}*\n"
         f"🔔 Alerts:        *{current['alerts']}*\n"
-        f"🔥 Hot Discovery: *{current.get('hot_discovery', 'ON')}*\n"
+        f"🔥 Hot Discovery: *{current['hot_discovery']}*\n"
         f"💰 Balance:       *${current['balance']:,}*"
     )
     keyboard = [
@@ -429,14 +439,14 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
     settings_db = db.load_db(db.SETTINGS_DB_FILE)
 
     for user_id, coins in watchlist.items():
-        user_pref = settings_db.get(user_id, {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0})
+        user_pref = get_user_settings(settings_db, user_id)
         if user_pref["alerts"] == "OFF":
             continue
         for coin, target in list(coins.items()):
             price, trend = await asyncio.to_thread(ana.fetch_market_analytics, coin)
             if price is not None and trend is not None:
                 if price <= target:
-                    user_cap = user_pref.get("balance", 1000.0)
+                    user_cap = user_pref["balance"]
                     if trend <= -4.0:
                         low_stake = user_cap * 0.02
                         high_stake = user_cap * 0.06
@@ -458,7 +468,7 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
                     db.save_db(watchlist, db.WATCH_DB_FILE)
 
     for user_id, coins in predictions.items():
-        user_pref = settings_db.get(user_id, {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0})
+        user_pref = get_user_settings(settings_db, user_id)
         if user_pref["alerts"] == "OFF":
             continue
         for coin, info in list(coins.items()):
@@ -472,7 +482,7 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
             if cur_price < MIN_COIN_PRICE or target_price < MIN_COIN_PRICE:
                 continue
             if confidence >= 65 and move_pct >= 25 and now - last_alert > 3600:
-                user_cap = user_pref.get("balance", 1000.0)
+                user_cap = user_pref["balance"]
                 safe_buy = user_cap * 0.05
                 risky_buy = user_cap * 0.15
                 safe_qty = safe_buy / cur_price
@@ -505,8 +515,8 @@ async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
     if not trending:
         return
     for user_id in list(settings_db.keys()):
-        user_pref = settings_db.get(user_id, {"alerts": "ON", "hot_discovery": "ON"})
-        if user_pref.get("alerts") == "OFF" or user_pref.get("hot_discovery", "ON") == "OFF":
+        user_pref = get_user_settings(settings_db, user_id)
+        if user_pref["alerts"] == "OFF" or user_pref["hot_discovery"] == "OFF":
             continue
         alerted = set(predictions.get(user_id, {}).keys())
         for coin in trending:
