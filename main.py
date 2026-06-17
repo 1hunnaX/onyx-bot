@@ -17,7 +17,7 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MIN_COIN_PRICE = 1.0
 
-DEFAULT_SETTINGS = {"risk_mode": "Safe", "alerts": "ON", "hot_discovery": "ON", "balance": 1000.0}
+DEFAULT_SETTINGS = {"risk_mode": "Safe", "alerts": "ON", "balance": 1000.0}
 
 COIN_ALIASES = {
     "btc": "bitcoin", "eth": "ethereum", "sol": "solana", "xrp": "ripple",
@@ -86,7 +86,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     first_name = update.effective_user.first_name
     users_interacted = db.load_db(db.USER_DB_FILE)
-    divider = "━" * 25
+    divider = "─" * 20
 
     if user_id not in users_interacted:
         welcome_text = (
@@ -113,7 +113,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(welcome_text, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    d = "━" * 25
+    d = "─" * 20
     help_map = (
         f"📖 *onyX Commands*\n"
         f"{d}\n"
@@ -146,7 +146,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     watchlist = db.load_db(db.WATCH_DB_FILE)
-    divider = "━" * 25
+    divider = "─" * 20
     try:
         coin = resolve_coin(context.args[0])
         target_price = float(context.args[1])
@@ -175,7 +175,7 @@ async def watch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     watchlist = db.load_db(db.WATCH_DB_FILE)
     user_tracks = watchlist.get(str(update.effective_user.id), {})
-    divider = "━" * 25
+    divider = "─" * 20
     if not user_tracks:
         await update.message.reply_text(
             f"📭 *No Alerts Set*\n{divider}\n"
@@ -191,10 +191,10 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(summary, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧹 Clear All", callback_data="q_clear_alerts")]]), parse_mode="Markdown")
 
 async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    divider = "─" * 20
     try:
         coin = resolve_coin(context.args[0])
         price, change = await asyncio.to_thread(ana.fetch_instant_price, coin)
-        divider = "━" * 25
         if price is not None:
             arrow = "📈" if change >= 0 else "📉"
             sign = "+" if change >= 0 else ""
@@ -211,11 +211,11 @@ async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ *Usage:*\n{divider}\n`/price [coin]`\n📌 `/price bitcoin`", parse_mode="Markdown")
 
 async def trend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    divider = "─" * 20
     try:
         coin = resolve_coin(context.args[0])
         await update.message.reply_text(random_loading())
         price, trend = await asyncio.to_thread(ana.fetch_market_analytics, coin)
-        divider = "━" * 25
         if price is not None:
             sign = "+" if trend >= 0 else ""
             if trend > 2.0:
@@ -239,7 +239,7 @@ async def trend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def gas_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     standard, fast = await asyncio.to_thread(ana.fetch_eth_gas)
-    divider = "━" * 25
+    divider = "─" * 20
     await update.message.reply_text(
         f"⛽ *Network Fees*\n{divider}\n"
         f"🔹 *Ethereum*\n"
@@ -257,7 +257,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         topic = random.choice(topics)
         r = await asyncio.to_thread(requests.get, f"https://news.google.com/rss/search?q={topic}&hl=en-US&gl=US&ceid=US:en&t={ts}", timeout=10)
         root = ET.fromstring(r.content)
-        divider = "━" * 25
+        divider = "─" * 20
         msg = f"📰 *Crypto News* — {topic.title()}\n{divider}\n"
         for item in list(root.findall('.//item'))[:3]:
             title = item.findtext('title', '')
@@ -271,7 +271,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def setbalance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     user_settings = db.load_db(db.SETTINGS_DB_FILE)
-    divider = "━" * 25
+    divider = "─" * 20
     try:
         amount = float(context.args[0])
         if user_id not in user_settings:
@@ -298,13 +298,12 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     settings = get_user_settings(user_settings, user_id)
     user_tracks = watchlist.get(user_id, {})
     user_preds = predictions.get(user_id, {})
-    divider = "━" * 25
+    divider = "─" * 20
 
     msg = (
         f"💳 *Your Portfolio*\n{divider}\n"
         f"💰 Wallet:    *${settings['balance']:,}*\n"
         f"🛡️ Risk Mode: *{settings['risk_mode']}*\n"
-        f"🔥 Discovery: *{settings['hot_discovery']}*\n{divider}\n"
         f"📊 Alerts:     *{len(user_tracks)} active*\n"
         f"🔮 Predictions: *{len(user_preds)} watching*\n{divider}\n"
         f"💡 `/setbalance [amount]` to adjust your wallet"
@@ -315,18 +314,17 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     user_settings = db.load_db(db.SETTINGS_DB_FILE)
     current = get_user_settings(user_settings, user_id)
-    divider = "━" * 25
+    divider = "─" * 20
 
     text = (
         f"⚙️ *Settings*\n{divider}\n"
         f"🛡️ Risk Mode:     *{current['risk_mode']}*\n"
         f"🔔 Alerts:        *{current['alerts']}*\n"
-        f"🔥 Hot Discovery: *{current['hot_discovery']}*\n"
         f"💰 Balance:       *${current['balance']:,}*"
     )
     keyboard = [
         [InlineKeyboardButton("Toggle Risk Mode", callback_data="toggle_risk"), InlineKeyboardButton("Mute Alerts", callback_data="toggle_alerts")],
-        [InlineKeyboardButton("Hot Discovery", callback_data="toggle_hot"), InlineKeyboardButton("Exit ❌", callback_data="close_settings")]
+        [InlineKeyboardButton("Exit ❌", callback_data="close_settings")]
     ]
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
@@ -335,7 +333,7 @@ async def settings_button_callback(update: Update, context: ContextTypes.DEFAULT
     user_id = str(query.from_user.id)
     user_settings = db.load_db(db.SETTINGS_DB_FILE)
     await query.answer()
-    divider = "━" * 25
+    divider = "─" * 20
 
     current = get_user_settings(user_settings, user_id)
 
@@ -343,8 +341,6 @@ async def settings_button_callback(update: Update, context: ContextTypes.DEFAULT
         current["risk_mode"] = "Risky" if current["risk_mode"] == "Safe" else "Safe"
     elif query.data == "toggle_alerts":
         current["alerts"] = "OFF" if current["alerts"] == "ON" else "ON"
-    elif query.data == "toggle_hot":
-        current["hot_discovery"] = "OFF" if current["hot_discovery"] == "ON" else "ON"
     elif query.data == "close_settings":
         await query.edit_message_text(f"🔒 *Settings Saved*\n{divider}\nYour preferences have been updated.", parse_mode="Markdown")
         return
@@ -356,19 +352,18 @@ async def settings_button_callback(update: Update, context: ContextTypes.DEFAULT
         f"⚙️ *Settings*\n{divider}\n"
         f"🛡️ Risk Mode:     *{current['risk_mode']}*\n"
         f"🔔 Alerts:        *{current['alerts']}*\n"
-        f"🔥 Hot Discovery: *{current['hot_discovery']}*\n"
         f"💰 Balance:       *${current['balance']:,}*"
     )
     keyboard = [
         [InlineKeyboardButton("Toggle Risk Mode", callback_data="toggle_risk"), InlineKeyboardButton("Mute Alerts", callback_data="toggle_alerts")],
-        [InlineKeyboardButton("Hot Discovery", callback_data="toggle_hot"), InlineKeyboardButton("Exit ❌", callback_data="close_settings")]
+        [InlineKeyboardButton("Exit ❌", callback_data="close_settings")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     watchlist = db.load_db(db.WATCH_DB_FILE)
-    divider = "━" * 25
+    divider = "─" * 20
     if user_id in watchlist:
         del watchlist[user_id]
         db.save_db(watchlist, db.WATCH_DB_FILE)
@@ -377,18 +372,18 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def clear_predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     predictions = db.load_db(db.PREDICT_DB_FILE)
-    divider = "━" * 25
+    divider = "─" * 20
     if user_id in predictions:
         del predictions[user_id]
         db.save_db(predictions, db.PREDICT_DB_FILE)
     await update.message.reply_text(f"🧹 *Predictions Cleared*\n{divider}\nAll prediction tracking has been removed.", parse_mode="Markdown")
 
 async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    divider = "─" * 20
     try:
         coin = resolve_coin(context.args[0])
         user_id = str(update.effective_user.id)
         predictions = db.load_db(db.PREDICT_DB_FILE)
-        divider = "━" * 25
         if user_id not in predictions:
             predictions[user_id] = {}
         predictions[user_id][coin] = {"added": time.time(), "last_alert": None}
@@ -405,11 +400,11 @@ async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ *Usage:*\n{divider}\n`/predict [coin]`\n📌 `/predict bitcoin`", parse_mode="Markdown")
 
 async def unpredict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    divider = "─" * 20
     try:
         coin = resolve_coin(context.args[0])
         user_id = str(update.effective_user.id)
         predictions = db.load_db(db.PREDICT_DB_FILE)
-        divider = "━" * 25
         if user_id in predictions and coin in predictions[user_id]:
             del predictions[user_id][coin]
             if not predictions[user_id]:
@@ -429,7 +424,7 @@ async def unpredict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     predictions = db.load_db(db.PREDICT_DB_FILE)
     user_coins = predictions.get(str(update.effective_user.id), {})
-    divider = "━" * 25
+    divider = "─" * 20
     if not user_coins:
         await update.message.reply_text(
             f"📭 *No Predictions*\n{divider}\n"
@@ -439,9 +434,7 @@ async def predictions_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     msg = f"🔮 *Prediction Watchlist ({len(user_coins)})*\n{divider}\n"
     for coin, info in user_coins.items():
-        tag = " 🤖" if isinstance(info, dict) and info.get("auto") else ""
-        msg += f"🔸 *{coin.upper()}*{tag}\n"
-    msg += f"{divider}\n🤖 = auto-discovered"
+        msg += f"🔸 *{coin.upper()}*\n"
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🧹 Clear All", callback_data="q_clear_preds")]]), parse_mode="Markdown")
 
 async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -452,7 +445,7 @@ async def discover_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not coins:
         await update.message.reply_text("⚠️ *Scan Failed*\nCouldn't scan right now. Try again later.")
         return
-    divider = "━" * 25
+    divider = "─" * 20
     msg = f"🔥 *Hot Coins Found*\n{divider}\n"
     found = 0
     for coin in coins[:8]:
@@ -476,14 +469,14 @@ async def conversational_handler(update: Update, context: ContextTypes.DEFAULT_T
     if price is not None:
         arrow = "📈" if change >= 0 else "📉"
         sign = "+" if change >= 0 else ""
-        divider = "━" * 25
+        divider = "─" * 20
         await update.message.reply_text(
             f"💰 *{coin.upper()}*\n{divider}\n💵 Price: *${price:,.2f}*\n{arrow} 24h: *{sign}{change:.2f}%*",
             reply_markup=coin_buttons(coin),
             parse_mode="Markdown"
         )
         return
-    divider = "━" * 25
+    divider = "─" * 20
     await update.message.reply_text(
         f"🤖 *Hey!*\n{divider}\n"
         f"Not sure what you mean.\n\n"
@@ -547,7 +540,7 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
                 safe_qty = safe_buy / cur_price
                 risky_qty = risky_buy / cur_price
                 arrow = "↗" if direction == "bullish" else "↘"
-                divider = "━" * 25
+                divider = "─" * 20
                 msg = (
                     f"📊 *PREDICTION: {coin.upper()}*\n"
                     f"{divider}\n"
@@ -564,50 +557,6 @@ async def check_prices_job(context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
                 predictions[user_id][coin] = {"added": info.get("added", now), "last_alert": now, "last_dir": direction}
                 db.save_db(predictions, db.PREDICT_DB_FILE)
-
-async def check_trending_job(context: ContextTypes.DEFAULT_TYPE):
-    settings_db = db.load_db(db.SETTINGS_DB_FILE)
-    predictions = db.load_db(db.PREDICT_DB_FILE)
-    trending = await asyncio.to_thread(ana.fetch_trending_coins)
-    if not trending:
-        trending = await asyncio.to_thread(ana.fetch_volatile_coins)
-    if not trending:
-        return
-    for user_id in list(settings_db.keys()):
-        user_pref = get_user_settings(settings_db, user_id)
-        if user_pref["alerts"] == "OFF" or user_pref["hot_discovery"] == "OFF":
-            continue
-        alerted = set(predictions.get(user_id, {}).keys())
-        for coin in trending:
-            if coin in alerted:
-                continue
-            result = await asyncio.to_thread(ana.analyze_market, coin)
-            if result[0] is None or result[1] < 65:
-                continue
-            _, _, cur, tgt, _, _ = result
-            if abs((tgt - cur) / cur) * 100 < 25:
-                continue
-            if cur < MIN_COIN_PRICE or tgt < MIN_COIN_PRICE:
-                continue
-            direction, confidence, cur_price, target_price, summary, emoji = result
-            arrow = "↗" if direction == "bullish" else "↘"
-            divider = "━" * 25
-            msg = (
-                f"🔥 *HOT COIN: {coin.upper()}*\n"
-                f"{divider}\n"
-                f"Signal: *{direction.upper()}* {emoji}  Confidence: *{confidence}%*\n"
-                f"{divider}\n"
-                f"Current: *${cur_price:,.2f}*\n"
-                f"Target:  *${target_price:,.2f}* {arrow}\n"
-                f"{divider}\n"
-                f"{summary}\n\n"
-                f"📌 Use `/predict {coin}` to track this coin."
-            )
-            await context.bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown")
-            if user_id not in predictions:
-                predictions[user_id] = {}
-            predictions[user_id][coin] = {"added": 0, "last_alert": 0, "last_dir": direction, "auto": True}
-            db.save_db(predictions, db.PREDICT_DB_FILE)
 
 async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -650,7 +599,7 @@ async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
         arrow = "📈" if change >= 0 else "📉"
         sign = "+" if change >= 0 else ""
-        divider = "━" * 25
+        divider = "─" * 20
         await query.edit_message_text(
             f"💰 *{coin.upper()}*\n{divider}\n💵 Price: *${price:,.2f}*\n{arrow} 24h: *{sign}{change:.2f}%*",
             reply_markup=coin_buttons(coin),
@@ -664,7 +613,7 @@ async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
         sign = "+" if trend >= 0 else ""
         status = "🔥 *PUMPING*" if trend > 2.0 else ("❄️ *DUMPING*" if trend < -2.0 else "⚖️ *SIDEWAYS*")
-        divider = "━" * 25
+        divider = "─" * 20
         await query.edit_message_text(
             f"📊 *{coin.upper()} — 4h Trend*\n{divider}\n💵 Price: *${price:,.2f}*\n📊 4h Chg: *{sign}{trend:.2f}%*\n{divider}\n{status}",
             reply_markup=coin_buttons(coin),
@@ -743,7 +692,6 @@ def main():
 
     app.job_queue.scheduler.configure(timezone="UTC")
     app.job_queue.run_repeating(check_prices_job, interval=60, first=10)
-    app.job_queue.run_repeating(check_trending_job, interval=7200, first=120)
 
     print("🚀 onyX is online!")
     app.run_polling()
